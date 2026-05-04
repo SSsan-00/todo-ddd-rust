@@ -1,12 +1,12 @@
+use rusqlite::{Connection, OptionalExtension, params};
+
 /// タスク保存の抽象
 pub trait TaskRepository {
-    fn save(&mut self, title: TaskTitle) -> Task;
-    fn get_all(&self) -> Vec<Task>;
-    fn find_by_id(&self, id: TaskId) -> Option<Task>;
-    fn update(&mut self, task: Task);
+    fn save(&mut self, title: TaskTitle) -> Result<Task, rusqlite::Error>;
+    fn get_all(&self) -> Result<Vec<Task>, rusqlite::Error>;
+    fn find_by_id(&self, id: TaskId) -> Result<Option<Task>, rusqlite::Error>;
+    fn update(&mut self, task: Task) -> Result<(), rusqlite::Error>;
 }
-
-use rusqlite::{Connection, params};
 
 /// SQLiteを使ったTaskRepository実装
 pub struct SqliteTaskRepository {
@@ -32,49 +32,48 @@ impl SqliteTaskRepository {
 }
 
 impl TaskRepository for SqliteTaskRepository {
-    fn save(&mut self, title: TaskTitle) -> Task {
-        self.conn
-            .execute(
-                "INSERT INTO tasks (title, completed) VALUES (?1, ?2)",
-                params![title.value(), 0],
-            )
-            .unwrap();
+    fn save(&mut self, title: TaskTitle) -> Result<Task, rusqlite::Error> {
+        self.conn.execute(
+            "INSERT INTO tasks (title, completed) VALUES (?1, ?2)",
+            params![title.value(), 0],
+        )?;
 
         let id = self.conn.last_insert_rowid() as u64;
 
-        Task::new(TaskId::new(id), title)
+        Ok(Task::new(TaskId::new(id), title))
     }
 
-    fn get_all(&self) -> Vec<Task> {
+    fn get_all(&self) -> Result<Vec<Task>, rusqlite::Error> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, completed FROM tasks ORDER BY id")
-            .unwrap();
+            .prepare("SELECT id, title, completed FROM tasks ORDER BY id")?;
 
-        let rows = stmt
-            .query_map([], |row| {
-                let id: i64 = row.get(0)?;
-                let title: String = row.get(1)?;
-                let completed: i64 = row.get(2)?;
+        let rows = stmt.query_map([], |row| {
+            let id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let completed: i64 = row.get(2)?;
 
-                let mut task = Task::new(TaskId::new(id as u64), TaskTitle::new(&title).unwrap());
+            let mut task = Task::new(
+                TaskId::new(id as u64),
+                TaskTitle::new(&title).map_err(|_| rusqlite::Error::InvalidQuery)?,
+            );
 
-                if completed != 0 {
-                    task.complete();
-                }
+            if completed != 0 {
+                task.complete();
+            }
 
-                Ok(task)
-            })
-            .unwrap();
+            Ok(task)
+        })?;
 
-        rows.map(|row| row.unwrap()).collect()
+        let tasks = rows.collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tasks)
     }
 
-    fn find_by_id(&self, id: TaskId) -> Option<Task> {
+    fn find_by_id(&self, id: TaskId) -> Result<Option<Task>, rusqlite::Error> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, title, completed FROM tasks WHERE id = ?1")
-            .unwrap();
+            .prepare("SELECT id, title, completed FROM tasks WHERE id = ?1")?;
 
         stmt.query_row(params![id.value() as i64], |row| {
             let id: i64 = row.get(0)?;
@@ -89,20 +88,20 @@ impl TaskRepository for SqliteTaskRepository {
 
             Ok(task)
         })
-        .ok()
+        .optional()
     }
 
-    fn update(&mut self, task: Task) {
-        self.conn
-            .execute(
-                "UPDATE tasks SET title = ?1, completed = ?2 WHERE id = ?3",
-                params![
-                    task.title().value(),
-                    if task.is_completed() { 1 } else { 0 },
-                    task.id().value() as i64,
-                ],
-            )
-            .unwrap();
+    fn update(&mut self, task: Task) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            "UPDATE tasks SET title = ?1, completed = ?2 WHERE id = ?3",
+            params![
+                task.title().value(),
+                if task.is_completed() { 1 } else { 0 },
+                task.id().value() as i64,
+            ],
+        )?;
+
+        Ok(())
     }
 }
 
@@ -133,24 +132,24 @@ impl Default for InMemoryTaskRepository {
 }
 
 impl TaskRepository for InMemoryTaskRepository {
-    fn save(&mut self, title: TaskTitle) -> Task {
+    fn save(&mut self, title: TaskTitle) -> Result<Task, rusqlite::Error> {
         let id = self.generate_id();
         let task = Task::new(id, title);
 
         self.tasks.push(task.clone());
 
-        task
+        Ok(task)
     }
 
-    fn get_all(&self) -> Vec<Task> {
-        self.tasks.clone()
+    fn get_all(&self) -> Result<Vec<Task>, rusqlite::Error> {
+        Ok(self.tasks.clone())
     }
 
-    fn find_by_id(&self, id: TaskId) -> Option<Task> {
-        self.tasks.iter().find(|task| task.id() == id).cloned()
+    fn find_by_id(&self, id: TaskId) -> Result<Option<Task>, rusqlite::Error> {
+        Ok(self.tasks.iter().find(|task| task.id() == id).cloned())
     }
 
-    fn update(&mut self, task: Task) {
+    fn update(&mut self, task: Task) -> Result<(), rusqlite::Error> {
         if let Some(index) = self
             .tasks
             .iter()
@@ -158,6 +157,7 @@ impl TaskRepository for InMemoryTaskRepository {
         {
             self.tasks[index] = task;
         }
+        Ok(())
     }
 }
 
@@ -173,26 +173,32 @@ impl<R: TaskRepository> TaskService<R> {
     pub fn create(&mut self, title: &str) -> Result<Task, TaskError> {
         let title = TaskTitle::new(title)?;
 
-        let task = self.repo.save(title);
+        let task = self
+            .repo
+            .save(title)
+            .map_err(|_| TaskError::Infrastructure)?;
 
         Ok(task)
     }
 
-    pub fn get_all(&self) -> Vec<Task> {
-        self.repo.get_all()
+    pub fn get_all(&self) -> Result<Vec<Task>, TaskError> {
+        self.repo.get_all().map_err(|_| TaskError::Infrastructure)
     }
 
     pub fn complete_task(&mut self, id: u64) -> Result<Task, TaskError> {
         let id = TaskId::new(id);
 
-        let mut task = match self.repo.find_by_id(id) {
-            Some(task) => task,
-            None => return Err(TaskError::NotFound),
-        };
+        let mut task = self
+            .repo
+            .find_by_id(id)
+            .map_err(|_| TaskError::Infrastructure)?
+            .ok_or(TaskError::NotFound)?;
 
         task.complete();
 
-        self.repo.update(task.clone());
+        self.repo
+            .update(task.clone())
+            .map_err(|_| TaskError::Infrastructure)?;
 
         Ok(task)
     }
@@ -204,6 +210,7 @@ pub enum TaskError {
     /// タイトルがからだった場合のエラー
     EmptyTitle,
     NotFound,
+    Infrastructure,
 }
 
 /// タスクタイトルを表すValue Object
@@ -366,7 +373,7 @@ mod tests {
         service.create("Learn Rust").unwrap();
 
         // Assert
-        let tasks = service.get_all();
+        let tasks = service.get_all().unwrap();
 
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].title().value(), "Learn Rust");
@@ -401,7 +408,7 @@ mod tests {
         // Assert
         assert!(completed_task.is_completed());
 
-        let tasks = service.get_all();
+        let tasks = service.get_all().unwrap();
         assert_eq!(tasks.len(), 1);
         assert!(tasks[0].is_completed());
     }

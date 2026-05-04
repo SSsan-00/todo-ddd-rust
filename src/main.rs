@@ -39,25 +39,28 @@ fn main() {
             }
         }
 
-        "list" => {
-            let tasks = service.get_all();
+        "list" => match service.get_all() {
+            Ok(tasks) => {
+                if tasks.is_empty() {
+                    println!("no tasks");
+                    return;
+                }
 
-            if tasks.is_empty() {
-                println!("no tasks");
-                return;
+                for task in tasks {
+                    let status = if task.is_completed() { "x" } else { " " };
+
+                    println!(
+                        "[{}] {}: {}",
+                        status,
+                        task.id().value(),
+                        task.title().value()
+                    );
+                }
             }
-
-            for task in tasks {
-                let status = if task.is_completed() { "x" } else { " " };
-
-                println!(
-                    "[{}] {}: {}",
-                    status,
-                    task.id().value(),
-                    task.title().value()
-                );
+            Err(error) => {
+                eprintln!("error: {:?}", error);
             }
-        }
+        },
 
         "done" => {
             if args.len() < 3 {
@@ -65,7 +68,14 @@ fn main() {
                 return;
             }
 
-            let id = args[2].parse::<u64>().unwrap();
+            let id = match args[2].parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    eprintln!("id must be a number");
+                    return;
+                }
+            };
+
             match service.complete_task(id) {
                 Ok(task) => {
                     println!(
@@ -81,7 +91,7 @@ fn main() {
         }
 
         _ => {
-            eprint!("unknown command");
+            eprintln!("unknown command");
         }
     }
 }
