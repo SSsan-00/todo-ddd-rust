@@ -1,8 +1,13 @@
 use clap::{Parser, Subcommand};
-use todo_ddd_rust::{SqliteTaskRepository, TaskService};
+use todo::{SqliteTaskRepository, TaskService};
 
 #[derive(Parser)]
-#[command(name = "todo")]
+#[command(
+    name = "todo",
+    version,
+    about = "Simple TODO CLI built with Rust + DDD + Di",
+    long_about = None
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -10,9 +15,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    Add { title: String },
+    /// Add a new task
+    Add {
+        /// Task title
+        title: String,
+    },
+    /// Show all tasks
     List,
-    Done { id: u64 },
+    /// Mark task as completed
+    Done {
+        /// Task ID
+        id: u64,
+    },
 }
 
 fn main() {
