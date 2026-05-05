@@ -1,5 +1,17 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use todo::{SqliteTaskRepository, TaskService};
+
+#[derive(Args)]
+#[group(multiple = false)]
+struct ListArgs {
+    /// Show only completed tasks
+    #[arg(long)]
+    completed: bool,
+
+    /// Show only active tasks
+    #[arg(long)]
+    active: bool,
+}
 
 #[derive(Parser)]
 #[command(
@@ -21,15 +33,8 @@ enum Commands {
         title: String,
     },
     /// Show tasks
-    List {
-        /// Show only completed tasks
-        #[arg(long)]
-        completed: bool,
+    List(ListArgs),
 
-        /// Show only active tasks
-        #[arg(long)]
-        active: bool,
-    },
     Done {
         /// Task ID
         id: u64,
@@ -61,14 +66,14 @@ fn main() {
             }
         }
 
-        Commands::List { completed, active } => match service.get_all() {
+        Commands::List(args) => match service.get_all() {
             Ok(tasks) => {
                 let filtered_tasks: Vec<_> = tasks
                     .into_iter()
                     .filter(|task| {
-                        if completed {
+                        if args.completed {
                             task.is_completed()
-                        } else if active {
+                        } else if args.active {
                             !task.is_completed()
                         } else {
                             true
