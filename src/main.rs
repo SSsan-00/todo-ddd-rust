@@ -20,9 +20,16 @@ enum Commands {
         /// Task title
         title: String,
     },
-    /// Show all tasks
-    List,
-    /// Mark task as completed
+    /// Show tasks
+    List {
+        /// Show only completed tasks
+        #[arg(long)]
+        completed: bool,
+
+        /// Show only active tasks
+        #[arg(long)]
+        active: bool,
+    },
     Done {
         /// Task ID
         id: u64,
@@ -54,14 +61,27 @@ fn main() {
             }
         }
 
-        Commands::List => match service.get_all() {
+        Commands::List { completed, active } => match service.get_all() {
             Ok(tasks) => {
-                if tasks.is_empty() {
+                let filtered_tasks: Vec<_> = tasks
+                    .into_iter()
+                    .filter(|task| {
+                        if completed {
+                            task.is_completed()
+                        } else if active {
+                            !task.is_completed()
+                        } else {
+                            true
+                        }
+                    })
+                    .collect();
+
+                if filtered_tasks.is_empty() {
                     println!("no tasks");
                     return;
                 }
 
-                for task in tasks {
+                for task in filtered_tasks {
                     let status = if task.is_completed() { "x" } else { " " };
 
                     println!(
