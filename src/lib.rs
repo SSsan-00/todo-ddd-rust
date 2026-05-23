@@ -278,6 +278,11 @@ impl Task {
     pub fn complete(&mut self) {
         self.completed = true;
     }
+
+    /// タスクタイトルを変更する
+    pub fn rename(&mut self, title: TaskTitle) {
+        self.title = title;
+    }
 }
 
 #[cfg(test)]
@@ -350,6 +355,22 @@ mod tests {
 
         // Assert
         assert!(task.is_completed());
+    }
+
+    #[test]
+    fn task_can_be_renamed() {
+        // Arrange
+        let id = TaskId::new(1);
+        let title = TaskTitle::new("Learn Rust").unwrap();
+        let mut task = Task::new(id, title);
+
+        let new_title = TaskTitle::new("Learn DDD").unwrap();
+
+        // Act
+        task.rename(new_title);
+
+        // Assert
+        assert_eq!(task.title().value(), "Learn DDD");
     }
 
     #[test]
