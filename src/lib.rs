@@ -312,6 +312,18 @@ mod tests {
     }
 
     #[test]
+    fn task_title_returns_error_when_value_is_only_whitespace() {
+        // Arrange
+        let value = "   ";
+
+        // Act
+        let title = TaskTitle::new(value);
+
+        // Assert
+        assert_eq!(title, Err(TaskError::EmptyTitle));
+    }
+
+    #[test]
     fn task_can_be_created_with_id_and_title() {
         // Arrange
         let id = TaskId::new(1);

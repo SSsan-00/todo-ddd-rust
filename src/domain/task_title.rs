@@ -12,6 +12,9 @@ impl TaskTitle {
     ///
     /// から文字の場合は`TaskError::EmptyTitle`を返す
     pub fn new(value: &str) -> Result<Self, TaskError> {
+        // シャドーイングでvalueの値をtrim
+        let value = value.trim();
+
         if value.is_empty() {
             return Err(TaskError::EmptyTitle);
         }
